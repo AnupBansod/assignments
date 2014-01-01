@@ -35,6 +35,10 @@
 #include "btrfs_inode.h"
 #include "transaction.h"
 
+
+#include <linux/kern_levels.h>
+//#include "qdb.h"
+
 static int g_verbose = 0;
 
 #define verbose_printk(...) if (g_verbose) printk(__VA_ARGS__)
@@ -145,6 +149,8 @@ struct name_cache_entry {
 	int name_len;
 	char name[];
 };
+
+
 
 static void fs_path_reset(struct fs_path *p)
 {
@@ -421,6 +427,8 @@ out:
 
 static int tlv_put(struct send_ctx *sctx, u16 attr, const void *data, int len)
 {
+
+printk("______%s\n",__FUNCTION__);
 	struct btrfs_tlv_header *hdr;
 	int total_len = sizeof(*hdr) + len;
 	int left = sctx->send_max_size - sctx->send_size;
@@ -462,11 +470,15 @@ static int tlv_put_u64(struct send_ctx *sctx, u16 attr, u64 value)
 	return tlv_put(sctx, attr, &tmp, sizeof(tmp));
 }
 
+static char qdb_str[100];
 static int tlv_put_string(struct send_ctx *sctx, u16 attr,
 			  const char *str, int len)
 {
 	if (len == -1)
 		len = strlen(str);
+	printk("%s--%s\n",__FUNCTION__,str);
+	strcpy(qdb_str,str);
+	
 	return tlv_put(sctx, attr, str, len);
 }
 
@@ -697,7 +709,7 @@ out:
 /*
  * Helper function to retrieve some fields from an inode item.
  */
-static int get_inode_info(struct btrfs_root *root,
+int get_inode_info(struct btrfs_root *root,
 			  u64 ino, u64 *size, u64 *gen,
 			  u64 *mode, u64 *uid, u64 *gid,
 			  u64 *rdev)
@@ -706,7 +718,7 @@ static int get_inode_info(struct btrfs_root *root,
 	struct btrfs_inode_item *ii;
 	struct btrfs_key key;
 	struct btrfs_path *path;
-
+printk("%s\n",__FUNCTION__);
 	path = alloc_path_for_send();
 	if (!path)
 		return -ENOMEM;
@@ -2084,7 +2096,7 @@ static int get_cur_path(struct send_ctx *sctx, u64 ino, u64 gen,
 	u64 parent_inode = 0;
 	u64 parent_gen = 0;
 	int stop = 0;
-
+printk("%s\n",__FUNCTION__);
 	name = fs_path_alloc();
 	if (!name) {
 		ret = -ENOMEM;
@@ -2107,12 +2119,14 @@ static int get_cur_path(struct send_ctx *sctx, u64 ino, u64 gen,
 		ret = fs_path_add_path(dest, name);
 		if (ret < 0)
 			goto out;
-
+if( (dest->start != NULL) && (*dest->start != 'o'))
+printk("name->start = %s, dest->start = %s, \n",name->start,dest->start);
 		ino = parent_inode;
 		gen = parent_gen;
 	}
 
 out:
+printk("end of %s\n",__FUNCTION__);
 	fs_path_free(name);
 	if (!ret)
 		fs_path_unreverse(dest);
@@ -2275,7 +2289,7 @@ static int send_truncate(struct send_ctx *sctx, u64 ino, u64 gen, u64 size)
 {
 	int ret = 0;
 	struct fs_path *p;
-
+printk("%s\n",__FUNCTION__);
 verbose_printk("btrfs: send_truncate %llu size=%llu\n", ino, size);
 
 	p = fs_path_alloc();
@@ -2304,7 +2318,7 @@ static int send_chmod(struct send_ctx *sctx, u64 ino, u64 gen, u64 mode)
 {
 	int ret = 0;
 	struct fs_path *p;
-
+printk("%s\n",__FUNCTION__);
 verbose_printk("btrfs: send_chmod %llu mode=%llu\n", ino, mode);
 
 	p = fs_path_alloc();
@@ -2333,7 +2347,7 @@ static int send_chown(struct send_ctx *sctx, u64 ino, u64 gen, u64 uid, u64 gid)
 {
 	int ret = 0;
 	struct fs_path *p;
-
+printk("%s\n",__FUNCTION__);
 verbose_printk("btrfs: send_chown %llu uid=%llu, gid=%llu\n", ino, uid, gid);
 
 	p = fs_path_alloc();
@@ -2370,7 +2384,7 @@ static int send_utimes(struct send_ctx *sctx, u64 ino, u64 gen)
 	int slot;
 
 verbose_printk("btrfs: send_utimes %llu\n", ino);
-
+printk("%s\n",__FUNCTION__);
 	p = fs_path_alloc();
 	if (!p)
 		return -ENOMEM;
@@ -2417,6 +2431,18 @@ out:
 	return ret;
 }
 
+
+char *get_relative_path(struct send_ctx *sctx, u16 attr, char *str)
+{
+	struct fs_path *p;
+	p = fs_path_alloc();
+        if (!p)
+                return -ENOMEM;
+
+
+}
+
+
 /*
  * Sends a BTRFS_SEND_C_MKXXX or SYMLINK command to user space. We don't have
  * a valid path yet because we did not process the refs yet. So, the inode
@@ -2430,7 +2456,7 @@ static int send_create_inode(struct send_ctx *sctx, u64 ino)
 	u64 gen;
 	u64 mode;
 	u64 rdev;
-
+printk("%s\n",__FUNCTION__);
 verbose_printk("btrfs: send_create_inode %llu\n", ino);
 
 	p = fs_path_alloc();
@@ -2469,17 +2495,25 @@ verbose_printk("btrfs: send_create_inode %llu\n", ino);
 	if (ret < 0)
 		goto out;
 
+printk("send_create_inode (1)\n");
 	TLV_PUT_PATH(sctx, BTRFS_SEND_A_PATH, p);
 	TLV_PUT_U64(sctx, BTRFS_SEND_A_INO, ino);
+printk("qdb_str == %s\n",qdb_str);
+printk("flags == %d\n",sctx->flags);
+	if((sctx->flags & 0x400) == 0x400)
+		printk("flags are working\n");
 
 	if (S_ISLNK(mode)) {
 		fs_path_reset(p);
 		ret = read_symlink(sctx->send_root, ino, p);
 		if (ret < 0)
 			goto out;
+		printk("send_create_inode  (2)\n");
 		TLV_PUT_PATH(sctx, BTRFS_SEND_A_PATH_LINK, p);
 	} else if (S_ISCHR(mode) || S_ISBLK(mode) ||
-		   S_ISFIFO(mode) || S_ISSOCK(mode)) {
+		   S_ISFIFO(mode) || S_ISSOCK(mode))
+	 {
+		printk("send_create_inode (3)\n");
 		TLV_PUT_U64(sctx, BTRFS_SEND_A_RDEV, new_encode_dev(rdev));
 		TLV_PUT_U64(sctx, BTRFS_SEND_A_MODE, mode);
 	}
@@ -4113,7 +4147,7 @@ out:
 static int process_recorded_refs_if_needed(struct send_ctx *sctx, int at_end)
 {
 	int ret = 0;
-
+printk("%s\n",__FUNCTION__);
 	if (sctx->cur_ino == 0)
 		goto out;
 	if (!at_end && sctx->cur_ino == sctx->cmp_key->objectid &&
@@ -4148,7 +4182,7 @@ static int finish_inode_if_needed(struct send_ctx *sctx, int at_end)
 	u64 right_gid;
 	int need_chmod = 0;
 	int need_chown = 0;
-
+printk("%s\n",__FUNCTION__);
 	ret = process_recorded_refs_if_needed(sctx, at_end);
 	if (ret < 0)
 		goto out;
@@ -4209,6 +4243,7 @@ static int finish_inode_if_needed(struct send_ctx *sctx, int at_end)
 		goto out;
 
 out:
+printk("end of %s\n",__FUNCTION__);
 	return ret;
 }
 
@@ -4221,14 +4256,13 @@ static int changed_inode(struct send_ctx *sctx,
 	struct btrfs_inode_item *right_ii = NULL;
 	u64 left_gen = 0;
 	u64 right_gen = 0;
-
+printk("%s\n",__FUNCTION__);
 	ret = close_cur_inode_file(sctx);
 	if (ret < 0)
 		goto out;
 
 	sctx->cur_ino = key->objectid;
 	sctx->cur_inode_new_gen = 0;
-
 	/*
 	 * Set send_progress to current inode. This will tell all get_cur_xxx
 	 * functions that the current inode's refs are not updated yet. Later,
@@ -4238,12 +4272,17 @@ static int changed_inode(struct send_ctx *sctx,
 
 	if (result == BTRFS_COMPARE_TREE_NEW ||
 	    result == BTRFS_COMPARE_TREE_CHANGED) {
+
+
 		left_ii = btrfs_item_ptr(sctx->left_path->nodes[0],
 				sctx->left_path->slots[0],
 				struct btrfs_inode_item);
 		left_gen = btrfs_inode_generation(sctx->left_path->nodes[0],
 				left_ii);
-	} else {
+	} else
+	 {
+
+//printk("status == \" else \"");
 		right_ii = btrfs_item_ptr(sctx->right_path->nodes[0],
 				sctx->right_path->slots[0],
 				struct btrfs_inode_item);
@@ -4251,6 +4290,9 @@ static int changed_inode(struct send_ctx *sctx,
 				right_ii);
 	}
 	if (result == BTRFS_COMPARE_TREE_CHANGED) {
+		
+//printk(",  status == \"changed \"");
+
 		right_ii = btrfs_item_ptr(sctx->right_path->nodes[0],
 				sctx->right_path->slots[0],
 				struct btrfs_inode_item);
@@ -4267,8 +4309,9 @@ static int changed_inode(struct send_ctx *sctx,
 		    sctx->cur_ino != BTRFS_FIRST_FREE_OBJECTID)
 			sctx->cur_inode_new_gen = 1;
 	}
-
-	if (result == BTRFS_COMPARE_TREE_NEW) {
+	if (result == BTRFS_COMPARE_TREE_NEW)
+	 {
+//	printk(",  second-stat == \"new file\"");
 		sctx->cur_inode_gen = left_gen;
 		sctx->cur_inode_new = 1;
 		sctx->cur_inode_deleted = 0;
@@ -4279,6 +4322,8 @@ static int changed_inode(struct send_ctx *sctx,
 		if (sctx->cur_ino != BTRFS_FIRST_FREE_OBJECTID)
 			ret = send_create_inode_if_needed(sctx);
 	} else if (result == BTRFS_COMPARE_TREE_DELETED) {
+//		printk(",  second-stat == \"deleted file\"");
+
 		sctx->cur_inode_gen = right_gen;
 		sctx->cur_inode_new = 0;
 		sctx->cur_inode_deleted = 1;
@@ -4294,6 +4339,7 @@ static int changed_inode(struct send_ctx *sctx,
 		 * reused the same inum. So we have to treat the old inode as
 		 * deleted and the new one as new.
 		 */
+//		printk(",  second-stat == \"changed file\"");
 		if (sctx->cur_inode_new_gen) {
 			/*
 			 * First, process the inode as if it was deleted.
@@ -4343,7 +4389,9 @@ static int changed_inode(struct send_ctx *sctx,
 			ret = process_all_new_xattrs(sctx);
 			if (ret < 0)
 				goto out;
-		} else {
+		} else
+		 {
+//				printk(",  second-stat == \"in else\"");
 			sctx->cur_inode_gen = left_gen;
 			sctx->cur_inode_new = 0;
 			sctx->cur_inode_new_gen = 0;
@@ -4373,7 +4421,7 @@ static int changed_ref(struct send_ctx *sctx,
 		       enum btrfs_compare_tree_result result)
 {
 	int ret = 0;
-
+printk("%s\n",__FUNCTION__);
 	BUG_ON(sctx->cur_ino != sctx->cmp_key->objectid);
 
 	if (!sctx->cur_inode_new_gen &&
@@ -4398,7 +4446,7 @@ static int changed_xattr(struct send_ctx *sctx,
 			 enum btrfs_compare_tree_result result)
 {
 	int ret = 0;
-
+printk("%s\n",__FUNCTION__);
 	BUG_ON(sctx->cur_ino != sctx->cmp_key->objectid);
 
 	if (!sctx->cur_inode_new_gen && !sctx->cur_inode_deleted) {
@@ -4422,7 +4470,7 @@ static int changed_extent(struct send_ctx *sctx,
 			  enum btrfs_compare_tree_result result)
 {
 	int ret = 0;
-
+printk("%s\n",__FUNCTION__);
 	BUG_ON(sctx->cur_ino != sctx->cmp_key->objectid);
 
 	if (!sctx->cur_inode_new_gen && !sctx->cur_inode_deleted) {
@@ -4496,6 +4544,7 @@ out:
  * Updates compare related fields in sctx and simply forwards to the actual
  * changed_xxx functions.
  */
+
 static int changed_cb(struct btrfs_root *left_root,
 		      struct btrfs_root *right_root,
 		      struct btrfs_path *left_path,
@@ -4506,8 +4555,10 @@ static int changed_cb(struct btrfs_root *left_root,
 {
 	int ret = 0;
 	struct send_ctx *sctx = ctx;
-
+		
+printk("%s\n",__FUNCTION__);
 	if (result == BTRFS_COMPARE_TREE_SAME) {
+printk("            inside if\n");
 		if (key->type != BTRFS_INODE_REF_KEY &&
 		    key->type != BTRFS_INODE_EXTREF_KEY)
 			return 0;
@@ -4527,7 +4578,20 @@ static int changed_cb(struct btrfs_root *left_root,
 	ret = finish_inode_if_needed(sctx, 0);
 	if (ret < 0)
 		goto out;
+//k
+printk("*******************\n");
+struct fs_path *p = NULL;
+ p = fs_path_alloc();
+if(!p)
+	goto skip_qdb;
+get_cur_path(sctx,sctx->cur_ino,sctx->cur_inode_gen,p);
 
+if( (p->start != NULL) && (*p->start != 'o'))
+printk("%s path = %s\n",__FUNCTION__,p->start);
+skip_qdb:
+
+printk("*******************\n");
+//k
 	/* Ignore non-FS objects */
 	if (key->objectid == BTRFS_FREE_INO_OBJECTID ||
 	    key->objectid == BTRFS_FREE_SPACE_OBJECTID)
@@ -4544,6 +4608,7 @@ static int changed_cb(struct btrfs_root *left_root,
 		ret = changed_extent(sctx, result);
 
 out:
+printk("end of %s\n",__FUNCTION__);
 	return ret;
 }
 
@@ -4676,7 +4741,22 @@ static int send_subvol(struct send_ctx *sctx)
 				changed_cb, sctx);
 		if (ret < 0)
 			goto out;
+		printk("%s\n",__FUNCTION__);
 		ret = finish_inode_if_needed(sctx, 1);
+
+printk("*******************\n");
+struct fs_path *p = NULL;
+ p = fs_path_alloc();
+if(!p)
+	goto skip_qdb;
+get_cur_path(sctx,sctx->cur_ino,sctx->cur_inode_gen,p);
+
+if( (p->start != NULL) && (*p->start != 'o'))
+printk("%s, changed_cb path = %s\n",__FUNCTION__,p->start);
+skip_qdb:
+
+printk("*******************\n");
+
 		if (ret < 0)
 			goto out;
 	} else {
@@ -4706,7 +4786,7 @@ long btrfs_ioctl_send(struct file *mnt_file, void __user *arg_)
 	struct send_ctx *sctx = NULL;
 	u32 i;
 	u64 *clone_sources_tmp = NULL;
-
+printk("%s",__FUNCTION__);
 	if (!capable(CAP_SYS_ADMIN))
 		return -EPERM;
 
@@ -4778,8 +4858,13 @@ long btrfs_ioctl_send(struct file *mnt_file, void __user *arg_)
 	INIT_RADIX_TREE(&sctx->name_cache, GFP_NOFS);
 	INIT_LIST_HEAD(&sctx->name_cache_list);
 
-	sctx->flags = arg->flags;
 
+
+	sctx->flags = arg->flags;
+//k
+
+printk("%s,    sctx->flags == %llu,   arg->flags == %llu",__FUNCTION__,sctx->flags,arg->flags);
+//k
 	sctx->send_filp = fget(arg->send_fd);
 	if (!sctx->send_filp) {
 		ret = -EBADF;
@@ -4897,3 +4982,10 @@ out:
 
 	return ret;
 }
+
+int qdb_get_path(void)
+{
+	printk("%s\n",__FUNCTION__);
+return 0;
+}
+
